@@ -6,7 +6,7 @@ This document should explain everything, read it end-to-end before you get start
 
 This codebase is a small, deliberately incomplete slice of a product like YunoJuno, using similar tech to what we use day to day. The goal of the application is to let companies book freelancers, freelancers can log hours, hours can be approved, and hours then roll up into bills. The project is built to look and feel like an existing product codebase, most of it is clean but there are a few rough edges.
 
-Below, we outline 3 possible tasks. You should select **two** of them to complete.
+Below, we outline 3 possible tasks. You should select **one** of them to complete.
 
 ---
 
@@ -73,17 +73,17 @@ The product models a tiny version of YunoJuno's contracts world:
 - The developer/integrations page exists but everything on it is a stub
 - A few small inconsistencies in the existing code, left as-is
 
-You shouldn't need to fix rough edges outside your chosen tasks. If something blocks you, fix it and mention it in your notes.
+You shouldn't need to fix rough edges outside your chosen task. If something blocks you, fix it and mention it in your notes.
 
 ---
 
 ## Your task
 
-Pick **two** of the three tasks below, implement them, and explain your work.
+Pick **one** of the three tasks below, implement it, and explain your work.
 
-Choose the two tasks you think make the best submission. In your notes, explain what you picked, what you left out, and why.
+Choose the task you think will make the best submission. In your notes, explain what you picked, what you left out, and why.
 
-You can assume the other task gets built later by someone else, so think about what will fit with later work.
+You can assume the other tasks get built later by someone else, so think about what will fit with later work.
 
 ---
 
@@ -161,12 +161,24 @@ We don't grade "AI usage" as a specific axis, so we don't need to see prompt log
 
 Deliver the final project, plus a `CANDIDATE_NOTES.md` at the root covering:
 
-1. **What you built and why.** We want to know how you made the decision of which tasks to tackle, and which one you decided not to do.
-2. **Key implementation notes.** Give us some details on the approach you took to each task, and why you made particular decisions.
-3. **Your workflow.** What tools and approach did you use to complete the tasks? Did you use any AI tools, if so how was that experience?
+1. **What you built and why.** We want to know how you made the decision of which task to tackle, and why.
+2. **Key implementation notes.** Give us some details on the approach you took with the task, and why you made particular decisions.
+3. **Your workflow.** What tools and approach did you use to complete the task? Did you use any AI tools, if so how was that experience?
 4. **Next steps.** If you had another four hours on this, what would you do.
 
 Half a page to a page is the right length, we read it all in detail along with the rest of your submission.
+
+---
+
+## Submission procedure
+
+We are big on async written communication here at YunoJuno - we need people that can communicate their changes well to people who are not necessarily in the same room as them over the internet. This is definitely something we pay attention to and expect on the job.
+
+To submit your exercise, we ask that you raise a pull request against the provided repository. Please treat the pull request the same as you would if this was an everyday feature addition you were making in your current or previous role.
+
+You're very welcome to use a throw-away Github account for extra privacy if you wish.
+
+Once done, please either reach out to your recruitment contact or inform us directly. If you used a throwaway Github account, please also confirm the username.
 
 ---
 
