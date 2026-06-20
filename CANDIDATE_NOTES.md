@@ -32,3 +32,11 @@ I replaced the Step 3 placeholder with the first real approvals table in `Pendin
 Rows without a matching contract still appear in the table but are marked as unpriceable (`Unknown freelancer`, `Unknown company`, `Not priceable`, and `Missing contract details` in notes) so admins can see orphaned submissions without inventing a cost. Loading and error states cover both queries, with separate error messages for timesheet and contract fetch failures.
 
 I deliberately left selection, filters, and approve/reject actions for later steps so this slice stays reviewable on its own.
+
+### Row selection and running totals (step 5)
+
+I added visible-row selection to the approvals table with an accessible select-all checkbox, per-row checkboxes, and a running footer summary for selected count, hours, and estimated cost. Selection only applies to priceable rows; unpriceable rows remain visible but disabled and excluded from totals.
+
+I also added an indeterminate state for the select-all control when only some visible priceable rows are selected. This improves feedback for keyboard and screen-reader users (`aria-checked=\"mixed\"`) while keeping the interaction model simple.
+
+After a quick UX pass, I adjusted the footer so `hours` and `estimated cost` totals sit under their matching columns, then set minimum widths for those two columns to stop layout shifts as totals change.
