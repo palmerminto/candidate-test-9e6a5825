@@ -5,6 +5,7 @@ import { fetchTimesheets } from '../api/timesheets'
 import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../hooks/useAuth'
 import { Contract, TimesheetEntry } from '../api/client'
+import { formatEstimatedCost } from '../utils/cost'
 
 // Props are passed down from ContractDetail — a candidate might reach for context here instead.
 function TimesheetTable({ entries, contract }: { entries: TimesheetEntry[]; contract: Contract }) {
@@ -42,7 +43,7 @@ function TimesheetTable({ entries, contract }: { entries: TimesheetEntry[]; cont
         <tfoot className="bg-slate-50 border-t border-slate-200">
           <tr>
             <td className="px-4 py-2 text-slate-500 text-xs">
-              {entries.length} entries &mdash; £{(totalHours * Number(contract.daily_rate) / 8).toFixed(2)} est.
+              {entries.length} entries &mdash; {formatEstimatedCost(totalHours, contract.daily_rate)}
             </td>
             <td className="px-4 py-2 font-medium text-slate-700">{totalHours}h total</td>
             <td colSpan={2} />

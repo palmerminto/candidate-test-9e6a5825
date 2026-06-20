@@ -11,6 +11,9 @@ htmlcov/
 .coverage
 node_modules/
 frontend/dist/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/tsconfig.node.tsbuildinfo
 .DS_Store
 *.log
 .pnpm-store/

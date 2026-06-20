@@ -16,9 +16,19 @@ export function createTimesheetEntry(data: {
   return api.post('/api/timesheets/', data)
 }
 
+/**
+ * Payload used by admin approval actions when deciding a submitted timesheet.
+ */
+export type TimesheetDecisionPayload =
+  | { status: 'approved' }
+  | { status: 'rejected'; rejection_reason: string }
+
+/**
+ * Updates a timesheet entry with an admin approval decision.
+ */
 export function patchTimesheetEntry(
   id: number,
-  data: { status: string; rejection_reason?: string }
+  data: TimesheetDecisionPayload
 ): Promise<TimesheetEntry> {
   return api.patch(`/api/timesheets/${id}/`, data)
 }

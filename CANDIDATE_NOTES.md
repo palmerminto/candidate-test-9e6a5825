@@ -12,3 +12,9 @@ Verification completed:
 - `pnpm --dir frontend build`
 
 Next, I would use this harness to add behavioural coverage for the approval inbox: visible-row selection, filtered totals, reject validation, and partial bulk-action failures.
+
+### Data layer and cost helper (step 2)
+
+I added a typed `TimesheetDecisionPayload` for approve/reject PATCH calls and extracted the estimated-cost calculation into `frontend/src/utils/cost.ts`, reusing it in `ContractDetail`.
+
+**Currency assumption:** The API exposes `daily_rate` only — there is no `currency` field on contracts or companies. The app currently assumes GBP everywhere (`£` in list/detail/submit screens, and “Daily rate (£)” on new contracts). `formatEstimatedCost` centralises that convention rather than encoding a data-driven currency. For a multi-currency platform, I would add `currency` to the contract (or company) model and format via `Intl.NumberFormat`, passing currency into the helper instead of hardcoding `£`.
