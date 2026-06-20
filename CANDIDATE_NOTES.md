@@ -24,3 +24,11 @@ I added a typed `TimesheetDecisionPayload` for approve/reject PATCH calls and ex
 I added the first admin-only `PendingApprovals` page shell and intentionally kept it narrow in scope. The page now gates access with `isAdmin`, redirects freelancers to `/contracts`, and loads submitted timesheets through React Query using the shared API layer.
 
 For this slice, I only implemented loading, error, empty, and placeholder states so the route and navigation can be reviewed independently before table logic is introduced. I also added a protected `/approvals` route in `App.tsx` and an admin-only `Approvals` link in the top nav to make the feature reachable.
+
+### Pending approvals table (step 4)
+
+I replaced the Step 3 placeholder with the first real approvals table in `PendingApprovals`. The page now loads contracts alongside submitted timesheets, joins them by `contract_id` via a `Map`, and renders each row with date, freelancer, company, hours, estimated cost, status, and notes using the existing table primitives and `StatusBadge`.
+
+Rows without a matching contract still appear in the table but are marked as unpriceable (`Unknown freelancer`, `Unknown company`, `Not priceable`, and `Missing contract details` in notes) so admins can see orphaned submissions without inventing a cost. Loading and error states cover both queries, with separate error messages for timesheet and contract fetch failures.
+
+I deliberately left selection, filters, and approve/reject actions for later steps so this slice stays reviewable on its own.
