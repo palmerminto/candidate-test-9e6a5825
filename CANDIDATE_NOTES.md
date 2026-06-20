@@ -84,3 +84,11 @@ Bulk actions fan out over the existing `patchTimesheetEntry` helper with a concu
 After wiring the full Step 9 behaviour, I refactored the page into feature-local pieces to reduce cognitive load and keep reviews focused. `PendingApprovals.tsx` is now a thin composition layer, while page behaviour is split into `usePendingApprovalsRows` (query, filtering, selection, derived summary) and `usePendingApprovalsActions` (single and bulk action orchestration), composed by `usePendingApprovalsPage`.
 
 I also grouped the `usePendingApprovalsPage` return shape into `loading`, `feedback`, `filters`, `summary`, and `table` models. This reduces prop-drilling noise and makes it clearer which data and handlers belong to each UI section.
+
+### Behavioural tests (step 10)
+
+I added the main approval-inbox behavioural coverage in `frontend/src/pages/PendingApprovals.test.tsx`, reusing the shared `renderWithProviders` helper and feature-local fixtures in `frontend/src/pages/pendingApprovals/testFixtures.ts`. API calls are mocked at the `src/api/*` boundary so tests stay fast and deterministic without hitting the network.
+
+**What is covered:** The highest-risk admin flows from the task brief — filtered running totals using the shared `/8` cost helper, visible-row select-all with unpriceable rows excluded, reject confirmation blocked until a reason is present, and bulk partial failure with retry. Tests query by role and label (`getByRole`, `getByLabelText`, `within(table)`) rather than class names or internal hook state.
+
+**Fixtures:** Alex (8h at £600/day → £600.00 est.), Sam (4h at £500/day → £250.00 est.), and a missing-contract row that stays visible but disabled and excluded from totals. Together they give a realistic mixed inbox for selection, filtering, and bulk-action reconciliation.

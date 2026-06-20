@@ -82,35 +82,52 @@ describe('PendingApprovals', () => {
     ).toBeInTheDocument()
   })
 
-  it('selects only visible priceable rows and updates running totals', async () => {
+  it('updates running cost totals across a filtered selection', async () => {
     await renderPage()
 
     expect(screen.getByText('2 entries · 12.0h · £850.00 est.')).toBeInTheDocument()
 
-    const selectAll = screen.getByLabelText('Select all visible filtered priceable timesheets')
-    await userEvent.click(selectAll)
+    await userEvent.click(screen.getByLabelText('Select all visible filtered priceable timesheets'))
 
     expect(screen.getByText('2 selected · 12.0h · £850.00 est.')).toBeInTheDocument()
 
+    await userEvent.selectOptions(screen.getByLabelText('Freelancer'), '11')
+
+    expect(screen.getByText('1 selected · 8.0h · £600.00 est.')).toBeInTheDocument()
+    expect(screen.queryByRole('cell', { name: 'Sam Chen' })).not.toBeInTheDocument()
+  })
+
+  it('selects only visible priceable rows and reconciles selection when filters change', async () => {
+    await renderPage()
+
+    const alexCheckbox = screen.getByLabelText('Select entry for Alex Rivera on 2026-05-01')
+    const samCheckbox = screen.getByLabelText('Select entry for Sam Chen on 2026-05-02')
     const orphanRowCheckbox = screen.getByLabelText(
       'Select entry for Unknown freelancer on 2026-05-03'
     )
-    expect(orphanRowCheckbox).toBeDisabled()
-    expect(orphanRowCheckbox).not.toBeChecked()
-  })
-
-  it('narrows contract options and reconciles selection when freelancer filter changes', async () => {
-    await renderPage()
 
     await userEvent.click(screen.getByLabelText('Select all visible filtered priceable timesheets'))
+
+    expect(alexCheckbox).toBeChecked()
+    expect(samCheckbox).toBeChecked()
+    expect(orphanRowCheckbox).toBeDisabled()
+    expect(orphanRowCheckbox).not.toBeChecked()
+
+    await userEvent.selectOptions(screen.getByLabelText('Freelancer'), '11')
+
+    expect(alexCheckbox).toBeChecked()
+    expect(samCheckbox).not.toBeInTheDocument()
+    expect(screen.getByText('1 selected · 8.0h · £600.00 est.')).toBeInTheDocument()
+  })
+
+  it('narrows contract options when freelancer filter is selected', async () => {
+    await renderPage()
+
     await userEvent.selectOptions(screen.getByLabelText('Freelancer'), '11')
 
     const contractSelect = screen.getByLabelText('Contract')
     const contractOptions = within(contractSelect).getAllByRole('option').map((option) => option.textContent)
     expect(contractOptions).toEqual(['All contracts', 'Contract #1 · Alex Rivera'])
-
-    expect(screen.getByText('1 selected · 8.0h · £600.00 est.')).toBeInTheDocument()
-    expect(screen.queryByRole('cell', { name: 'Sam Chen' })).not.toBeInTheDocument()
   })
 
   it('narrows freelancer options when contract filter is selected', async () => {
@@ -188,7 +205,7 @@ describe('PendingApprovals', () => {
     expect(await screen.findByText('2 timesheets approved.')).toBeInTheDocument()
   })
 
-  it('keeps failed bulk approvals visible and selected so they can be retried', async () => {
+  it('reconciles bulk partial failures and retries failed rows', async () => {
     let shouldFailSam = true
     patchTimesheetEntryMock.mockImplementation(async (id: number, payload: { status: string }) => {
       if (id === 102 && shouldFailSam) {
@@ -262,7 +279,7 @@ describe('PendingApprovals', () => {
     expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
   })
 
-  it('disables reject confirmation until a reason is provided', async () => {
+  it('blocks reject confirmation until a reason is provided', async () => {
     await renderPage()
 
     const table = screen.getByRole('table')
@@ -272,11 +289,14 @@ describe('PendingApprovals', () => {
       })
     )
 
+    const reasonInput = screen.getByLabelText('Rejection reason')
+    expect(reasonInput).toBeInTheDocument()
+
     const confirmButton = screen.getByRole('button', { name: 'Confirm rejection' })
     expect(confirmButton).toBeDisabled()
     expect(patchTimesheetEntryMock).not.toHaveBeenCalled()
 
-    await userEvent.type(screen.getByLabelText('Rejection reason'), 'Not approved')
+    await userEvent.type(reasonInput, 'Not approved')
     expect(confirmButton).toBeEnabled()
   })
 
