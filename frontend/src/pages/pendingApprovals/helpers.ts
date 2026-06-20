@@ -1,4 +1,5 @@
-import { Contract, TimesheetEntry } from '../../api/client'
+import type { Contract, TimesheetEntry } from '../../api/client'
+import type { TimesheetDecisionPayload } from '../../api/timesheets'
 import { calculateEstimatedCost, formatEstimatedCostValue } from '../../utils/cost'
 import { ApprovalFilters, ApprovalRow, PriceableApprovalRow } from './types'
 
@@ -179,4 +180,55 @@ export function formatSummaryBarText(
 
   const entryLabel = visibleCount === 1 ? 'entry' : 'entries'
   return `${visibleCount} ${entryLabel} · ${visibleHours.toFixed(1)}h · ${formatEstimatedCostValue(visibleCost)}`
+}
+
+export async function runBulkTimesheetDecisions(
+  entryIds: number[],
+  payload: TimesheetDecisionPayload,
+  patchFn: (id: number, payload: TimesheetDecisionPayload) => Promise<unknown>,
+  concurrency = 5
+): Promise<{ succeeded: number[]; failed: number[] }> {
+  const succeeded: number[] = []
+  const failed: number[] = []
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < entryIds.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      const entryId = entryIds[currentIndex]
+
+      try {
+        await patchFn(entryId, payload)
+        succeeded.push(entryId)
+      } catch {
+        failed.push(entryId)
+      }
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), entryIds.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+  return { succeeded, failed }
+}
+
+export function formatBulkResultMessage(
+  action: 'approved' | 'rejected',
+  successCount: number,
+  failCount: number
+): string {
+  const successLabel = successCount === 1 ? `1 ${action}` : `${successCount} ${action}`
+  const failLabel = failCount === 1 ? '1 failed' : `${failCount} failed`
+  return `${successLabel}, ${failLabel}`
+}
+
+export function formatBulkSuccessMessage(
+  action: 'approved' | 'rejected',
+  count: number
+): string {
+  if (count === 1) {
+    return action === 'approved' ? 'Timesheet approved.' : 'Timesheet rejected.'
+  }
+  return `${count} timesheets ${action}.`
 }

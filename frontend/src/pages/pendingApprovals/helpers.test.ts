@@ -12,11 +12,12 @@ import {
   getVisibleRows,
   mapRows,
   reconcileSelectedIds,
+  runBulkTimesheetDecisions,
   toggleVisiblePriceableSelection,
   toPriceableRows,
 } from './helpers'
 import { contractsFixture, submittedEntriesFixture } from './testFixtures'
-import { ApprovalFilters } from './types'
+import type { ApprovalFilters } from './types'
 
 function makeRows() {
   const contractsById = new Map(contractsFixture.map((contract) => [contract.id, contract]))
@@ -135,5 +136,48 @@ describe('pendingApprovals helpers', () => {
     expect(summary.selectedCost).toBe(600)
     expect(summary.allVisiblePriceableSelected).toBe(false)
     expect(summary.isSelectAllIndeterminate).toBe(true)
+  })
+
+  it('runs bulk decisions and separates successful and failed ids', async () => {
+    const result = await runBulkTimesheetDecisions(
+      [101, 102, 103],
+      { status: 'approved' },
+      async (id) => {
+        if (id === 102) throw new Error('Failed update')
+      }
+    )
+
+    expect(result.succeeded.sort()).toEqual([101, 103])
+    expect(result.failed).toEqual([102])
+  })
+
+  it('limits concurrent bulk decisions', async () => {
+    let activeRequests = 0
+    let maxActiveRequests = 0
+
+    await runBulkTimesheetDecisions(
+      [101, 102, 103, 104],
+      { status: 'approved' },
+      async () => {
+        activeRequests += 1
+        maxActiveRequests = Math.max(maxActiveRequests, activeRequests)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        activeRequests -= 1
+      },
+      2
+    )
+
+    expect(maxActiveRequests).toBeLessThanOrEqual(2)
+  })
+
+  it('runs bulk decisions even when concurrency is below one', async () => {
+    const result = await runBulkTimesheetDecisions(
+      [101],
+      { status: 'approved' },
+      async () => undefined,
+      0
+    )
+
+    expect(result).toEqual({ succeeded: [101], failed: [] })
   })
 })

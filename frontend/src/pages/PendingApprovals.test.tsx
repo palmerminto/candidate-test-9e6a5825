@@ -157,6 +157,69 @@ describe('PendingApprovals', () => {
     expect(await screen.findByText('Timesheet approved.')).toBeInTheDocument()
   })
 
+  it('shows and cancels bulk approve confirmation before submitting', async () => {
+    await renderPage()
+
+    await userEvent.click(screen.getByLabelText('Select all visible filtered priceable timesheets'))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+
+    expect(
+      screen.getByText('Approve 2 selected pending timesheet entries?')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Contract')).toBeDisabled()
+    expect(screen.getByLabelText('Select entry for Alex Rivera on 2026-05-01')).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel approval' }))
+    expect(
+      screen.queryByText('Approve 2 selected pending timesheet entries?')
+    ).not.toBeInTheDocument()
+    expect(patchTimesheetEntryMock).not.toHaveBeenCalled()
+  })
+
+  it('submits bulk approve only after confirmation', async () => {
+    await renderPage()
+
+    await userEvent.click(screen.getByLabelText('Select all visible filtered priceable timesheets'))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm approve' }))
+
+    expect(patchTimesheetEntryMock).toHaveBeenCalledWith(101, { status: 'approved' })
+    expect(patchTimesheetEntryMock).toHaveBeenCalledWith(102, { status: 'approved' })
+    expect(await screen.findByText('2 timesheets approved.')).toBeInTheDocument()
+  })
+
+  it('keeps failed bulk approvals visible and selected so they can be retried', async () => {
+    let shouldFailSam = true
+    patchTimesheetEntryMock.mockImplementation(async (id: number, payload: { status: string }) => {
+      if (id === 102 && shouldFailSam) {
+        shouldFailSam = false
+        throw new Error('Network error')
+      }
+
+      const entry = submittedEntriesFixture.find((item) => item.id === id)
+      return {
+        ...(entry ?? submittedEntriesFixture[0]),
+        status: payload.status,
+      }
+    })
+
+    await renderPage()
+
+    await userEvent.click(screen.getByLabelText('Select all visible filtered priceable timesheets'))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm approve' }))
+
+    expect(await screen.findByText(/1 approved, 1 failed/)).toBeInTheDocument()
+    expect(screen.queryByRole('cell', { name: 'Alex Rivera' })).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Sam Chen' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Select entry for Sam Chen on 2026-05-02')).toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(patchTimesheetEntryMock).toHaveBeenLastCalledWith(102, { status: 'approved' })
+    expect(await screen.findByText('Timesheet approved.')).toBeInTheDocument()
+  })
+
   it('shows date validation and disables selection when range is invalid', async () => {
     await renderPage()
 

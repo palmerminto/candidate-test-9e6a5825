@@ -1,7 +1,7 @@
 import { Fragment, ReactNode } from 'react'
 import { calculateEstimatedCost, formatCurrency } from '../../utils/cost'
 import { formatContractDateRange, formatContractHeading } from './helpers'
-import { ApprovalRow, PriceableApprovalRow } from './types'
+import type { PendingApprovalsTableModel } from './types'
 
 const TABLE_COLUMN_COUNT = 7
 const tabularNums = { fontVariantNumeric: 'tabular-nums' as const }
@@ -11,28 +11,7 @@ type ActionTrayProps = {
 }
 
 type ApprovalsTableProps = {
-  displayedRows: ApprovalRow[]
-  displayedPriceableRows: PriceableApprovalRow[]
-  selectedIds: Set<number>
-  filtersBlockSelection: boolean
-  allVisiblePriceableSelected: boolean
-  isSelectAllIndeterminate: boolean
-  approvingEntryId: number | null
-  rejectingEntryId: number | null
-  pendingEntryId: number | null
-  isDecisionPending: boolean
-  rejectionReason: string
-  rejectionReasonError: string | null
-  trimmedRejectionReason: string
-  onToggleAllVisiblePriceable: () => void
-  onToggleRow: (entryId: number) => void
-  onOpenApprove: (entryId: number) => void
-  onCancelApprove: () => void
-  onHandleApprove: (entryId: number) => void
-  onOpenReject: (entryId: number) => void
-  onCancelReject: () => void
-  onHandleReject: (entryId: number) => void
-  onRejectionReasonChange: (value: string) => void
+  table: PendingApprovalsTableModel
 }
 
 function ActionTray({ children }: ActionTrayProps) {
@@ -45,30 +24,33 @@ function ActionTray({ children }: ActionTrayProps) {
   )
 }
 
-export function ApprovalsTable({
-  displayedRows,
-  displayedPriceableRows,
-  selectedIds,
-  filtersBlockSelection,
-  allVisiblePriceableSelected,
-  isSelectAllIndeterminate,
-  approvingEntryId,
-  rejectingEntryId,
-  pendingEntryId,
-  isDecisionPending,
-  rejectionReason,
-  rejectionReasonError,
-  trimmedRejectionReason,
-  onToggleAllVisiblePriceable,
-  onToggleRow,
-  onOpenApprove,
-  onCancelApprove,
-  onHandleApprove,
-  onOpenReject,
-  onCancelReject,
-  onHandleReject,
-  onRejectionReasonChange,
-}: ApprovalsTableProps) {
+export function ApprovalsTable({ table }: ApprovalsTableProps) {
+  const {
+    displayedRows,
+    displayedPriceableRows,
+    selectedIds,
+    filtersBlockSelection,
+    allVisiblePriceableSelected,
+    isSelectAllIndeterminate,
+    approvingEntryId,
+    rejectingEntryId,
+    pendingEntryIds,
+    pendingActionKind,
+    isAnyActionPending,
+    isBulkInteractionLocked,
+    rejectionReason,
+    rejectionReasonError,
+    trimmedRejectionReason,
+    toggleAllVisiblePriceable,
+    toggleRow,
+    openApprove,
+    cancelApprove,
+    handleApprove,
+    openReject,
+    cancelReject,
+    handleReject,
+    handleRejectionReasonChange,
+  } = table
   return (
     <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
       <table className="w-full text-sm">
@@ -86,7 +68,7 @@ export function ApprovalsTable({
                     input.indeterminate = isSelectAllIndeterminate
                   }
                 }}
-                onChange={onToggleAllVisiblePriceable}
+                onChange={toggleAllVisiblePriceable}
               />
             </th>
             <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
@@ -127,9 +109,10 @@ export function ApprovalsTable({
               const isPriceable = Boolean(contract)
               const isApprovingThisRow = approvingEntryId === entry.id
               const isRejectingThisRow = rejectingEntryId === entry.id
-              const isPendingThisRow = pendingEntryId === entry.id && isDecisionPending
+              const isPendingThisRow = pendingEntryIds.has(entry.id) && isAnyActionPending
               const hasOpenTray = isApprovingThisRow || isRejectingThisRow
-              const rowActionsDisabled = !isPriceable || isPendingThisRow || hasOpenTray
+              const rowActionsDisabled =
+                !isPriceable || isPendingThisRow || hasOpenTray || isBulkInteractionLocked
               let actionCellContent: ReactNode
 
               if (!isPriceable) {
@@ -137,9 +120,11 @@ export function ApprovalsTable({
                   <span className="text-slate-500 text-xs italic">Not actionable</span>
                 )
               } else if (isPendingThisRow) {
+                const isRejecting =
+                  pendingActionKind === 'reject' || isRejectingThisRow
                 actionCellContent = (
                   <span className="text-slate-500 text-xs">
-                    {isRejectingThisRow ? 'Rejecting…' : 'Approving…'}
+                    {isRejecting ? 'Rejecting…' : 'Approving…'}
                   </span>
                 )
               } else {
@@ -148,7 +133,7 @@ export function ApprovalsTable({
                     <button
                       type="button"
                       disabled={rowActionsDisabled}
-                      onClick={() => onOpenApprove(entry.id)}
+                      onClick={() => openApprove(entry.id)}
                       aria-label={`Approve entry for ${freelancerName} on ${entry.date}`}
                       className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
@@ -157,7 +142,7 @@ export function ApprovalsTable({
                     <button
                       type="button"
                       disabled={rowActionsDisabled}
-                      onClick={() => onOpenReject(entry.id)}
+                      onClick={() => openReject(entry.id)}
                       aria-label={`Reject entry for ${freelancerName} on ${entry.date}`}
                       className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
@@ -176,7 +161,7 @@ export function ApprovalsTable({
                         aria-label={`Select entry for ${freelancerName} on ${entry.date}`}
                         checked={isPriceable && selectedIds.has(entry.id)}
                         disabled={!isPriceable || filtersBlockSelection || isPendingThisRow}
-                        onChange={() => onToggleRow(entry.id)}
+                        onChange={() => toggleRow(entry.id)}
                       />
                     </td>
                     <td className="px-4 py-3 text-slate-700">{entry.date}</td>
@@ -218,7 +203,7 @@ export function ApprovalsTable({
                         <button
                           type="button"
                           disabled={isPendingThisRow}
-                          onClick={() => onHandleApprove(entry.id)}
+                          onClick={() => handleApprove(entry.id)}
                           className="bg-indigo-600 text-white text-sm px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           {isPendingThisRow ? 'Approving…' : 'Confirm approve'}
@@ -226,7 +211,7 @@ export function ApprovalsTable({
                         <button
                           type="button"
                           disabled={isPendingThisRow}
-                          onClick={onCancelApprove}
+                          onClick={cancelApprove}
                           className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           Cancel approval
@@ -248,7 +233,7 @@ export function ApprovalsTable({
                           type="text"
                           required
                           value={rejectionReason}
-                          onChange={(e) => onRejectionReasonChange(e.target.value)}
+                          onChange={(e) => handleRejectionReasonChange(e.target.value)}
                           className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                         {rejectionReasonError && (
@@ -259,7 +244,7 @@ export function ApprovalsTable({
                         <button
                           type="button"
                           disabled={!trimmedRejectionReason || isPendingThisRow}
-                          onClick={() => onHandleReject(entry.id)}
+                          onClick={() => handleReject(entry.id)}
                           className="bg-indigo-600 text-white text-sm px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           {isPendingThisRow ? 'Rejecting…' : 'Confirm rejection'}
@@ -267,7 +252,7 @@ export function ApprovalsTable({
                         <button
                           type="button"
                           disabled={isPendingThisRow}
-                          onClick={onCancelReject}
+                          onClick={cancelReject}
                           className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           Cancel rejection

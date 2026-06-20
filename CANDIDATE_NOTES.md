@@ -74,3 +74,13 @@ Before bulk actions, I tightened the pending approvals UX and added behavioural 
 **Reject validation:** Confirm rejection stays disabled until a trimmed reason is present, matching the accessibility rule. The handler still guards against empty submit as a backstop.
 
 **Tests:** Added behavioural tests for clearing filters (including from a filtered-empty state), reject confirm enablement, and load retry after a failed fetch.
+
+### Bulk approve and reject (step 9)
+
+Bulk actions fan out over the existing `patchTimesheetEntry` helper with a concurrency cap of five, rather than adding a backend bulk endpoint. Selected rows are hidden optimistically at the start; failures are reconciled back into the table and re-selected so admins can retry without hunting for what failed.
+
+**Approve vs reject:** Bulk approve opens an inline confirmation step in the summary bar before PATCHing, matching the single-row approve tray. Bulk reject opens an inline reason form in the same card (no modal), with confirm disabled until a trimmed reason is present. Partial failures show a banner such as `2 approved, 1 failed · Retry`, and retry re-runs only the failed IDs with the same payload.
+
+After wiring the full Step 9 behaviour, I refactored the page into feature-local pieces to reduce cognitive load and keep reviews focused. `PendingApprovals.tsx` is now a thin composition layer, while page behaviour is split into `usePendingApprovalsRows` (query, filtering, selection, derived summary) and `usePendingApprovalsActions` (single and bulk action orchestration), composed by `usePendingApprovalsPage`.
+
+I also grouped the `usePendingApprovalsPage` return shape into `loading`, `feedback`, `filters`, `summary`, and `table` models. This reduces prop-drilling noise and makes it clearer which data and handlers belong to each UI section.
