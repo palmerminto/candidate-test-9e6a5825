@@ -180,6 +180,25 @@ export default function PendingApprovals() {
     ? 'Bulk actions will be added next'
     : 'Select at least one entry'
   const filtersBlockSelection = isDateRangeInvalid
+  const hasActiveFilters = Boolean(
+    contractFilter || freelancerFilter || startDate || endDate
+  )
+
+  function clearFilters() {
+    setContractFilter('')
+    setFreelancerFilter('')
+    setStartDate('')
+    setEndDate('')
+  }
+
+  function handleRetryLoad() {
+    if (timesheetsQuery.isError) {
+      timesheetsQuery.refetch()
+    }
+    if (contractsQuery.isError) {
+      contractsQuery.refetch()
+    }
+  }
 
   const decisionMutation = useMutation({
     mutationFn: ({ entryId, payload }: DecisionVariables) =>
@@ -331,8 +350,15 @@ export default function PendingApprovals() {
       {isLoading ? (
         <p className="text-slate-500">Loading…</p>
       ) : isError ? (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 text-sm">
-          {errorMessage}
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 text-sm space-y-3">
+          <p>{errorMessage}</p>
+          <button
+            type="button"
+            onClick={handleRetryLoad}
+            className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100"
+          >
+            Retry
+          </button>
         </div>
       ) : entries.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
@@ -426,6 +452,17 @@ export default function PendingApprovals() {
                 )}
               </div>
             </div>
+            {hasActiveFilters && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
