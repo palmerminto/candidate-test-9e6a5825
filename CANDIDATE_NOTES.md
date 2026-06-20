@@ -40,3 +40,11 @@ I added visible-row selection to the approvals table with an accessible select-a
 I also added an indeterminate state for the select-all control when only some visible priceable rows are selected. This improves feedback for keyboard and screen-reader users (`aria-checked=\"mixed\"`) while keeping the interaction model simple.
 
 After a quick UX pass, I adjusted the footer so `hours` and `estimated cost` totals sit under their matching columns, then set minimum widths for those two columns to stop layout shifts as totals change.
+
+### Client-side filters (step 6)
+
+I added contract, freelancer, and date-range filters on top of the existing submitted-timesheet query. Filtering is client-side because the API only supports `status` (and contract on the backend, but not freelancer or dates in one call). Selection reconciles to visible priceable rows when filters change, and an invalid date range shows inline validation while disabling select-all and row checkboxes.
+
+**Contract label ambiguity:** In this domain, a *contract* is the freelancer engagement (person + rate + period), not the company alone. The filter label matches the README and the rest of the app, but the option text (`Alex Rivera @ NorthStar Consulting`) can read like “person at company”, especially because company admins only ever see their own company in the table. I kept the existing label and option format rather than renaming to “Company” (wrong object) or dropping the company from the label (would diverge from contract list wording). The table still exposes Freelancer and Company as separate columns for clarity.
+
+**Narrowed filter options:** Contract and freelancer dropdowns now narrow each other — selecting a freelancer limits the contract list to that person’s contracts, and selecting a contract limits the freelancer list to that engagement’s freelancer. This avoids impossible combinations (e.g. freelancer A + contract for freelancer B) without hiding options based on pending entry counts. Stale selections clear automatically when a parent filter changes.

@@ -1,26 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Contract, TimesheetEntry } from '../api/client'
 import { fetchContracts } from '../api/contracts'
 import { fetchTimesheets } from '../api/timesheets'
 import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../hooks/useAuth'
-import { calculateEstimatedCost, formatEstimatedCost } from '../utils/cost'
-
-type ApprovalRow = {
-  entry: TimesheetEntry
-  contract: Contract | undefined
-}
-
-type PriceableApprovalRow = {
-  entry: TimesheetEntry
-  contract: Contract
-}
+import { formatEstimatedCost } from '../utils/cost'
+import { ApprovalFilters } from './pendingApprovals/types'
+import {
+  calculateSelectionSummary,
+  getAllContractOptions,
+  getAllFreelancerOptions,
+  getContractOptions,
+  getFreelancerOptions,
+  getVisiblePriceableIds,
+  getVisibleRows,
+  mapRows,
+  reconcileSelectedIds,
+  toPriceableRows,
+  toggleVisiblePriceableSelection,
+} from './pendingApprovals/helpers'
 
 export default function PendingApprovals() {
   const { isAdmin } = useAuth()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
+  const [contractFilter, setContractFilter] = useState('')
+  const [freelancerFilter, setFreelancerFilter] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   const timesheetsQuery = useQuery({
     queryKey: ['timesheets', { status: 'submitted' }],
@@ -34,10 +41,6 @@ export default function PendingApprovals() {
     enabled: isAdmin,
   })
 
-  if (!isAdmin) {
-    return <Navigate to="/contracts" replace />
-  }
-
   const isLoading = timesheetsQuery.isLoading || contractsQuery.isLoading
   const isError = timesheetsQuery.isError || contractsQuery.isError
   const entries = timesheetsQuery.data ?? []
@@ -47,29 +50,94 @@ export default function PendingApprovals() {
       ? 'Failed to load contract details. Please try again.'
       : 'Failed to load pending approvals. Please try again.'
 
-  const contractsById = new Map(
-    (contractsQuery.data ?? []).map((contract) => [contract.id, contract])
+  const contractsById = useMemo(
+    () => new Map((contractsQuery.data ?? []).map((contract) => [contract.id, contract])),
+    [contractsQuery.data]
   )
 
-  const rows: ApprovalRow[] = entries.map((entry) => ({
-    entry,
-    contract: contractsById.get(entry.contract_id),
-  }))
+  const rows = useMemo(() => mapRows(entries, contractsById), [entries, contractsById])
+  const priceableRows = useMemo(() => toPriceableRows(rows), [rows])
+  const allContractOptions = useMemo(() => getAllContractOptions(priceableRows), [priceableRows])
+  const allFreelancerOptions = useMemo(() => getAllFreelancerOptions(priceableRows), [priceableRows])
+  const contractOptions = useMemo(
+    () => getContractOptions(allContractOptions, freelancerFilter),
+    [allContractOptions, freelancerFilter]
+  )
+  const freelancerOptions = useMemo(
+    () => getFreelancerOptions(allFreelancerOptions, contractFilter, contractsById),
+    [allFreelancerOptions, contractFilter, contractsById]
+  )
 
-  const priceableRows: PriceableApprovalRow[] = rows.filter(
-    (row): row is PriceableApprovalRow => Boolean(row.contract)
+  useEffect(() => {
+    if (
+      contractFilter &&
+      !contractOptions.some((contract) => String(contract.id) === contractFilter)
+    ) {
+      setContractFilter('')
+    }
+  }, [contractFilter, contractOptions])
+
+  useEffect(() => {
+    if (
+      freelancerFilter &&
+      !freelancerOptions.some((freelancer) => String(freelancer.id) === freelancerFilter)
+    ) {
+      setFreelancerFilter('')
+    }
+  }, [freelancerFilter, freelancerOptions])
+
+  const isDateRangeInvalid = Boolean(startDate && endDate && startDate > endDate)
+  const applyDateFilter = !isDateRangeInvalid
+  const filters: ApprovalFilters = useMemo(
+    () => ({
+      contractFilter,
+      freelancerFilter,
+      startDate,
+      endDate,
+    }),
+    [contractFilter, freelancerFilter, startDate, endDate]
   )
-  const selectedRows = priceableRows.filter(({ entry }) => selectedIds.has(entry.id))
-  const selectedHours = selectedRows.reduce((sum, { entry }) => sum + Number(entry.hours), 0)
-  const selectedCost = selectedRows.reduce(
-    (sum, { entry, contract }) => sum + calculateEstimatedCost(entry.hours, contract.daily_rate),
-    0
+
+  const visibleRows = useMemo(
+    () => getVisibleRows(rows, filters, applyDateFilter),
+    [rows, filters, applyDateFilter]
   )
-  const allPriceableSelected =
-    priceableRows.length > 0 && priceableRows.every(({ entry }) => selectedIds.has(entry.id))
-  const isSelectAllIndeterminate = selectedRows.length > 0 && !allPriceableSelected
+  const visiblePriceableRows = useMemo(() => toPriceableRows(visibleRows), [visibleRows])
+  const visiblePriceableIds = useMemo(
+    () => getVisiblePriceableIds(rows, filters),
+    [rows, filters]
+  )
+
+  useEffect(() => {
+    if (isDateRangeInvalid) return
+
+    setSelectedIds((current) => {
+      const next = reconcileSelectedIds(current, visiblePriceableIds)
+      if (next.size === current.size && [...next].every((id) => current.has(id))) {
+        return current
+      }
+      return next
+    })
+  }, [isDateRangeInvalid, visiblePriceableIds])
+
+  const {
+    selectedRows,
+    selectedHours,
+    selectedCost,
+    allVisiblePriceableSelected,
+    isSelectAllIndeterminate,
+  } = useMemo(() => calculateSelectionSummary(visiblePriceableRows, selectedIds), [visiblePriceableRows, selectedIds])
+  const filtersBlockSelection = isDateRangeInvalid
+
+  const selectedContract = contractFilter
+    ? contractOptions.find((contract) => String(contract.id) === contractFilter)
+    : undefined
+  const selectedFreelancer = freelancerFilter
+    ? freelancerOptions.find((freelancer) => String(freelancer.id) === freelancerFilter)
+    : undefined
 
   function toggleRow(entryId: number) {
+    if (filtersBlockSelection) return
     setSelectedIds((current) => {
       const next = new Set(current)
       if (next.has(entryId)) next.delete(entryId)
@@ -79,18 +147,13 @@ export default function PendingApprovals() {
   }
 
   function toggleAllVisiblePriceable() {
-    setSelectedIds((current) => {
-      const next = new Set(current)
-      const allSelected = priceableRows.every(({ entry }) => next.has(entry.id))
+    if (filtersBlockSelection) return
 
-      if (allSelected) {
-        priceableRows.forEach(({ entry }) => next.delete(entry.id))
-      } else {
-        priceableRows.forEach(({ entry }) => next.add(entry.id))
-      }
+    setSelectedIds((current) => toggleVisiblePriceableSelection(current, visiblePriceableRows))
+  }
 
-      return next
-    })
+  if (!isAdmin) {
+    return <Navigate to="/contracts" replace />
   }
 
   return (
@@ -113,17 +176,95 @@ export default function PendingApprovals() {
           <p className="text-slate-500 text-sm">No submitted timesheets are waiting for approval.</p>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+            <div className="flex flex-wrap gap-4">
+              <div className="min-w-0 flex-1 basis-[12rem]">
+                <label htmlFor="filter_contract" className="block text-sm font-medium text-slate-700 mb-1">
+                  Contract
+                </label>
+                <select
+                  id="filter_contract"
+                  value={contractFilter}
+                  onChange={(e) => setContractFilter(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2 pr-8 text-sm bg-white truncate focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  title={
+                    selectedContract
+                      ? `${selectedContract.freelancer.name} @ ${selectedContract.company.name}`
+                      : undefined
+                  }
+                >
+                  <option value="">All contracts</option>
+                  {contractOptions.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.freelancer.name} @ {contract.company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="min-w-0 flex-1 basis-[12rem]">
+                <label htmlFor="filter_freelancer" className="block text-sm font-medium text-slate-700 mb-1">
+                  Freelancer
+                </label>
+                <select
+                  id="filter_freelancer"
+                  value={freelancerFilter}
+                  onChange={(e) => setFreelancerFilter(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2 pr-8 text-sm bg-white truncate focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  title={selectedFreelancer?.name}
+                >
+                  <option value="">All freelancers</option>
+                  {freelancerOptions.map((freelancer) => (
+                    <option key={freelancer.id} value={freelancer.id}>
+                      {freelancer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="filter_start_date" className="block text-sm font-medium text-slate-700 mb-1">
+                  From date
+                </label>
+                <input
+                  id="filter_start_date"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="filter_end_date" className="block text-sm font-medium text-slate-700 mb-1">
+                  To date
+                </label>
+                <input
+                  id="filter_end_date"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {isDateRangeInvalid && (
+                  <p className="text-red-600 text-xs mt-1">From date must be on or before to date.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">
                   <input
                     type="checkbox"
-                    aria-label="Select all visible priceable timesheets"
-                    aria-checked={isSelectAllIndeterminate ? 'mixed' : allPriceableSelected}
-                    checked={allPriceableSelected}
-                    disabled={priceableRows.length === 0}
+                    aria-label="Select all visible filtered priceable timesheets"
+                    aria-checked={isSelectAllIndeterminate ? 'mixed' : allVisiblePriceableSelected}
+                    checked={allVisiblePriceableSelected}
+                    disabled={filtersBlockSelection || visiblePriceableRows.length === 0}
                     ref={(input) => {
                       if (input) {
                         input.indeterminate = isSelectAllIndeterminate
@@ -146,7 +287,14 @@ export default function PendingApprovals() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map(({ entry, contract }) => {
+              {visibleRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-6 text-slate-500 text-sm">
+                    No timesheet entries match the current filters.
+                  </td>
+                </tr>
+              ) : (
+              visibleRows.map(({ entry, contract }) => {
                 const freelancerName = contract?.freelancer.name ?? 'Unknown freelancer'
                 const companyName = contract?.company.name ?? 'Unknown company'
                 const estimatedCostText = contract
@@ -162,7 +310,7 @@ export default function PendingApprovals() {
                         type="checkbox"
                         aria-label={`Select timesheet for ${freelancerName} on ${entry.date}`}
                         checked={isPriceable && selectedIds.has(entry.id)}
-                        disabled={!isPriceable}
+                        disabled={!isPriceable || filtersBlockSelection}
                         onChange={() => toggleRow(entry.id)}
                       />
                     </td>
@@ -181,7 +329,8 @@ export default function PendingApprovals() {
                     <td className="px-4 py-3 text-slate-500 text-xs italic">{notesText}</td>
                   </tr>
                 )
-              })}
+              })
+              )}
             </tbody>
             <tfoot className="bg-slate-50 border-t border-slate-200">
               <tr>
@@ -198,6 +347,7 @@ export default function PendingApprovals() {
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       )}
     </div>
