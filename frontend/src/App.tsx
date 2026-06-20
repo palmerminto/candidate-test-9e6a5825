@@ -9,6 +9,7 @@ import SubmitHours from './pages/SubmitHours'
 import Billing from './pages/Billing'
 import InvoiceDetail from './pages/InvoiceDetail'
 import DeveloperSettings from './pages/DeveloperSettings'
+import PendingApprovals from './pages/PendingApprovals'
 import { ReactNode } from 'react'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -67,6 +68,16 @@ function AppRoutes() {
           <RequireAuth>
             <Layout>
               <SubmitHours />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/approvals"
+        element={
+          <RequireAuth>
+            <Layout>
+              <PendingApprovals />
             </Layout>
           </RequireAuth>
         }
