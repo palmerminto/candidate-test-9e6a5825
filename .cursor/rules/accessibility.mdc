@@ -1,0 +1,46 @@
+---
+description: Accessibility conventions for the frontend approval inbox.
+globs: frontend/src/**/*.tsx
+alwaysApply: true
+---
+
+# Frontend accessibility
+
+Keep accessibility simple and consistent with the existing markup. Prefer native
+HTML controls and visible text over custom interaction patterns.
+
+## Forms and filters
+
+- Every input and select must have a visible `<label>` using the existing label
+  primitive.
+- Date range filters should be two labelled date inputs, not a custom picker.
+- Validation messages should appear next to the relevant field, using the
+  existing field-level error primitive.
+- Error and success banners should use plain text that explains what happened and
+  what the user can do next.
+
+## Buttons and links
+
+- Use real `<button>` elements for actions and real links for navigation.
+- Button text should describe the action, especially for bulk actions such as
+  "Approve selected" and "Reject selected".
+- Disable buttons when the action cannot run, for example when no rows are
+  selected or a rejection reason is missing.
+- Do not rely on icons, colour, or position alone to communicate an action.
+
+## Tables and selection
+
+- Use semantic table markup for timesheet rows.
+- Checkbox inputs must have accessible labels, either visible text or
+  row-specific `aria-label` text.
+- The select-all checkbox should clearly describe that it applies to the visible
+  filtered rows.
+- Selection state must be reflected by the checkbox state, not just row colour.
+
+## Status and feedback
+
+- Use `StatusBadge` for statuses and include nearby text where the status drives
+  a decision.
+- Do not rely on colour alone for errors, success, selected rows, or status.
+- Preserve the existing focus styles on inputs and buttons; do not remove
+  outlines without replacing them with an equivalent visible focus treatment.

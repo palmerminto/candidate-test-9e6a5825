@@ -1,0 +1,111 @@
+---
+description: Reuse existing UI primitives. Never invent new components or class strings when one already exists.
+globs: frontend/src/**/*.tsx
+alwaysApply: true
+---
+
+# UI primitives: reuse, do not invent
+
+This app has almost no extracted components. The primitives live as inline
+Tailwind class strings repeated across a handful of pages, plus one real
+component (`StatusBadge`). Your job when building UI is to **copy these exact
+strings**, not to regenerate markup or introduce your own design.
+
+## Before writing any UI
+
+Read these files and match their markup and classes exactly:
+
+- `src/pages/SubmitHours.tsx` (form, inputs, buttons, success/error banner)
+- `src/pages/NewContract.tsx` (form with select, field-level error)
+- `src/pages/ContractDetail.tsx` (table, table footer, error panel, headings)
+- `src/components/StatusBadge.tsx` (the only shared component)
+
+If a primitive below already exists, use the exact class string. Do not produce a
+new className combination for a primitive that already has one.
+
+## Canonical primitives (use these strings verbatim)
+
+**Page heading / subhead**
+- Heading: `text-xl font-semibold text-slate-900`
+- Subhead / muted text: `text-slate-500 text-sm`
+
+**Card / form container**
+- `bg-white border border-slate-200 rounded-lg p-6 space-y-4`
+
+**Label**
+- `block text-sm font-medium text-slate-700 mb-1`
+
+**Text / number / date input**
+- `w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`
+- Select adds `bg-white` to the same string.
+
+**Field-level error (under one input)**
+- `text-red-600 text-xs mt-1`
+
+**Primary button**
+- `bg-indigo-600 text-white text-sm px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed`
+- Full-width variant adds `w-full ... font-medium` (see Login).
+
+**Secondary / cancel (ghost) button**
+- `text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100`
+
+**Inline link**
+- `text-indigo-600 hover:text-indigo-800 text-sm`
+
+**Error banner (above a form / page)**
+- `bg-red-50 border border-red-200 text-red-700 text-sm rounded px-3 py-2`
+- Full panel variant: `bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 text-sm`
+
+**Success banner**
+- `bg-green-50 border border-green-200 text-green-800 text-sm rounded px-3 py-2`
+
+**Table shell**
+- Wrapper: `bg-white border border-slate-200 rounded-lg overflow-hidden`
+- Table: `w-full text-sm`
+- thead: `bg-slate-50 border-b border-slate-200`
+- th: `text-left px-4 py-3 font-medium text-slate-600`
+- tbody: `divide-y divide-slate-100`
+- tr: `hover:bg-slate-50`
+- td: `px-4 py-3 text-slate-700`
+- tfoot: `bg-slate-50 border-t border-slate-200`
+
+**Status badge**
+- Import and use the component. Do not recreate it:
+  `import { StatusBadge } from '../components/StatusBadge'`
+
+**Loading state**
+- Plain text, not a skeleton: `<p className="text-slate-500">Loading…</p>`
+
+**Palette**
+- slate (neutrals), indigo (primary/brand), green (success), red (error/danger),
+  yellow (the submitted badge). Do not introduce any other colours.
+
+## Hard prohibitions
+
+- Do not add a component library, headless UI kit, icon pack, or any new
+  dependency.
+- Do not add a new global CSS file or new Tailwind theme tokens.
+- Do not introduce modals, dialogs, popovers, or toasts. None exist in this
+  codebase. Input capture and confirmation are done inline using the form card and
+  banner primitives above (see the UX behaviour spec).
+- Do not invent new colour shades, spacing scales, or radii. Reuse what is listed.
+- Do not abstract these into a design system as part of this task.
+
+## Compose, do not invent
+
+New screens are new **arrangements** of the primitives above, not new primitives.
+The selectable table, the summary bar, and the embedded reject form are all
+assembled from the strings listed here.
+
+If you believe you genuinely need a primitive that does not exist, **stop and ask**
+rather than inventing one. Surface it as a question, do not guess.
+
+## Self-check before you finish
+
+1. Does every button, input, card, banner, and table cell use a class string that
+   already appears in one of the four reference files?
+2. Did you import `StatusBadge` rather than rebuild a badge?
+3. Did you add zero dependencies and zero new CSS?
+4. Is every colour from the approved palette?
+
+If any answer is no, fix it before completing.

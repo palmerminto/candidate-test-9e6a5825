@@ -1,0 +1,35 @@
+---
+description: Frontend test conventions and harness setup. Apply when adding or editing tests.
+globs: frontend/src/**/*.test.ts, frontend/src/**/*.test.tsx
+alwaysApply: false
+---
+
+# Frontend testing
+
+No test harness exists yet. Set it up once, consistently, then keep tests
+behavioural.
+
+## Harness
+- Vitest + @testing-library/react + @testing-library/jest-dom + jsdom.
+- Add a `test` script to `package.json`.
+- For components using React Query, render through a small helper that wraps them
+  in a `QueryClientProvider` with `retry: false`.
+
+## What to mock
+- Mock the `src/api/*` functions (or the underlying `api` / `fetch`) so tests
+  never hit the network. Drive both success and failure from the mock.
+
+## What to test (behaviour, not markup)
+Prioritise:
+- The running cost total across a filtered selection, using the /8 + "est." helper.
+- Select-all selects only visible rows, and the selection reconciles when filters
+  change.
+- Reject is blocked when the reason is empty.
+- Bulk partial failure: some PATCHes reject, the failed rows survive, stay
+  selected, and the banner reports the right counts.
+
+Query by role and label (`getByRole`, `getByLabelText`), not by class name.
+
+## Avoid
+- Snapshot tests and assertions on Tailwind classes.
+- Testing implementation details such as state internals or hook call counts.

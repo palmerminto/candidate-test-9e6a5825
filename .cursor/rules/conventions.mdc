@@ -1,0 +1,59 @@
+---
+description: Frontend engineering conventions for data fetching, mutations, state, types, and routing.
+globs: frontend/src/**/*.ts, frontend/src/**/*.tsx
+alwaysApply: true
+---
+
+# Frontend engineering conventions
+
+Match the existing codebase. The live patterns are in `ContractDetail.tsx`,
+`SubmitHours.tsx`, `NewContract.tsx`, `main.tsx`, and `src/api/*`.
+
+## Data layer
+- All HTTP goes through a typed function in `src/api/`. Components never call
+  `fetch` or the `api` object directly. Add a function (e.g. in
+  `api/timesheets.ts`) and import it.
+- Reuse the `api.get/post/patch/delete` helpers and the `ApiError` class.
+- Reuse shared types from `src/api/client.ts` (`Contract`, `TimesheetEntry`, ...).
+  Do not redefine them.
+
+## React Query
+- Server state lives in React Query. Do not cache server data in `useState`.
+- queryKey shape is `[entity, paramsObject]`, e.g.
+  `['timesheets', { status: 'submitted' }]`, matching existing keys.
+- Dependent queries use `enabled`.
+- Mutations use `useMutation` + `queryClient.invalidateQueries({ queryKey })` on
+  success, as in `NewContract` and `SubmitHours`. Do not hand-roll refetching.
+- Honour the global defaults in `main.tsx` (retry 1, staleTime 30s). Only override
+  per-query with a reason.
+
+## State
+- Ephemeral UI state in `useState`. The only context is `useAuth`. Do not add a
+  state library (Redux, Zustand, etc.).
+- Derive values during render. Do not mirror derived data into state or sync it
+  with `useEffect`. See `totalHours` in `ContractDetail`.
+- Surface errors as a local message string rendered in the existing banner, the
+  way the forms do. Map server field errors via `err instanceof ApiError` and
+  `err.data.<field>` (see `NewContract` reading `end_date`).
+
+## Numbers and money
+- `hours` and `daily_rate` arrive as strings. Always `Number()` before
+  arithmetic. Never concatenate them.
+- Cost is hours times daily rate divided by 8 (the codebase day convention),
+  formatted `£${value.toFixed(2)}` and labelled "est.". Put this in one helper and
+  use it everywhere. Do not re-derive it inline.
+
+## Routing and role gating
+- Register new routes in `App.tsx`, wrapped in `<RequireAuth><Layout>…`.
+- Gate by role the existing way: redirect unauthorised roles with
+  `<Navigate to="…" replace />` based on `useAuth` flags (`isAdmin`,
+  `isFreelancer`).
+- Gate admin-only nav entries on `isAdmin` in `Nav.tsx`.
+- Role behaviour (hidden vs disabled vs redirect) is defined in the UX spec. This
+  rule only covers wiring it.
+
+## Scope discipline
+- Stay within the approval-inbox feature. Do not refactor or "fix" unrelated
+  files, the backend, or the billing/developer stubs.
+- If you spot a bug or rough edge outside scope, note it in the PR or a comment.
+  Do not change it.
