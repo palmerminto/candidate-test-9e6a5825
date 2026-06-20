@@ -1,5 +1,5 @@
 import { Contract, TimesheetEntry } from '../../api/client'
-import { calculateEstimatedCost } from '../../utils/cost'
+import { calculateEstimatedCost, formatEstimatedCostValue } from '../../utils/cost'
 import { ApprovalFilters, ApprovalRow, PriceableApprovalRow } from './types'
 
 export function rowMatchesFilters(
@@ -30,8 +30,20 @@ export function toPriceableRows(rows: ApprovalRow[]): PriceableApprovalRow[] {
   return rows.filter((row): row is PriceableApprovalRow => Boolean(row.contract))
 }
 
-function contractLabel(contract: Contract): string {
-  return `${contract.freelancer.name} @ ${contract.company.name}`
+export function formatContractHeading(contract: Contract): string {
+  return `Contract #${contract.id}`
+}
+
+export function formatContractDateRange(contract: Contract): string {
+  return `${contract.start_date} – ${contract.end_date}`
+}
+
+export function formatContractFilterLabel(contract: Contract): string {
+  return `${formatContractHeading(contract)} · ${contract.freelancer.name}`
+}
+
+export function formatContractFilterTitle(contract: Contract): string {
+  return `${formatContractFilterLabel(contract)} · ${formatContractDateRange(contract)}`
 }
 
 export function getAllContractOptions(priceableRows: PriceableApprovalRow[]): Contract[] {
@@ -39,7 +51,7 @@ export function getAllContractOptions(priceableRows: PriceableApprovalRow[]): Co
   priceableRows.forEach(({ contract }) => {
     contracts.set(contract.id, contract)
   })
-  return [...contracts.values()].sort((a, b) => contractLabel(a).localeCompare(contractLabel(b)))
+  return [...contracts.values()].sort((a, b) => a.id - b.id)
 }
 
 export function getAllFreelancerOptions(priceableRows: PriceableApprovalRow[]): Contract['freelancer'][] {
@@ -111,6 +123,21 @@ export function toggleVisiblePriceableSelection(
   return next
 }
 
+export function calculatePriceableSummary(priceableRows: PriceableApprovalRow[]): {
+  entryCount: number
+  totalHours: number
+  totalCost: number
+} {
+  const entryCount = priceableRows.length
+  const totalHours = priceableRows.reduce((sum, { entry }) => sum + Number(entry.hours), 0)
+  const totalCost = priceableRows.reduce(
+    (sum, { entry, contract }) => sum + calculateEstimatedCost(entry.hours, contract.daily_rate),
+    0
+  )
+
+  return { entryCount, totalHours, totalCost }
+}
+
 export function calculateSelectionSummary(
   visiblePriceableRows: PriceableApprovalRow[],
   selectedIds: Set<number>
@@ -122,11 +149,8 @@ export function calculateSelectionSummary(
   isSelectAllIndeterminate: boolean
 } {
   const selectedRows = visiblePriceableRows.filter(({ entry }) => selectedIds.has(entry.id))
-  const selectedHours = selectedRows.reduce((sum, { entry }) => sum + Number(entry.hours), 0)
-  const selectedCost = selectedRows.reduce(
-    (sum, { entry, contract }) => sum + calculateEstimatedCost(entry.hours, contract.daily_rate),
-    0
-  )
+  const { totalHours: selectedHours, totalCost: selectedCost } =
+    calculatePriceableSummary(selectedRows)
   const allVisiblePriceableSelected =
     visiblePriceableRows.length > 0 &&
     visiblePriceableRows.every(({ entry }) => selectedIds.has(entry.id))
@@ -139,4 +163,20 @@ export function calculateSelectionSummary(
     allVisiblePriceableSelected,
     isSelectAllIndeterminate,
   }
+}
+
+export function formatSummaryBarText(
+  selectedCount: number,
+  selectedHours: number,
+  selectedCost: number,
+  visibleCount: number,
+  visibleHours: number,
+  visibleCost: number
+): string {
+  if (selectedCount > 0) {
+    return `${selectedCount} selected · ${selectedHours.toFixed(1)}h · ${formatEstimatedCostValue(selectedCost)}`
+  }
+
+  const entryLabel = visibleCount === 1 ? 'entry' : 'entries'
+  return `${visibleCount} ${entryLabel} · ${visibleHours.toFixed(1)}h · ${formatEstimatedCostValue(visibleCost)}`
 }

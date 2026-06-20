@@ -3,13 +3,15 @@ import PendingApprovals from './PendingApprovals'
 import { renderWithProviders, screen, userEvent, within } from '../test/render'
 import { contractsFixture, submittedEntriesFixture } from './pendingApprovals/testFixtures'
 
-const { fetchTimesheetsMock, fetchContractsMock } = vi.hoisted(() => ({
+const { fetchTimesheetsMock, fetchContractsMock, patchTimesheetEntryMock } = vi.hoisted(() => ({
   fetchTimesheetsMock: vi.fn(),
   fetchContractsMock: vi.fn(),
+  patchTimesheetEntryMock: vi.fn(),
 }))
 
 vi.mock('../api/timesheets', () => ({
   fetchTimesheets: fetchTimesheetsMock,
+  patchTimesheetEntry: patchTimesheetEntryMock,
 }))
 
 vi.mock('../api/contracts', () => ({
@@ -33,8 +35,16 @@ describe('PendingApprovals', () => {
   beforeEach(() => {
     fetchTimesheetsMock.mockReset()
     fetchContractsMock.mockReset()
+    patchTimesheetEntryMock.mockReset()
     fetchTimesheetsMock.mockResolvedValue(submittedEntriesFixture)
     fetchContractsMock.mockResolvedValue(contractsFixture)
+    patchTimesheetEntryMock.mockImplementation(async (id: number, payload: { status: string }) => {
+      const entry = submittedEntriesFixture.find((item) => item.id === id)
+      return {
+        ...(entry ?? submittedEntriesFixture[0]),
+        status: payload.status,
+      }
+    })
   })
 
   it('redirects non-admin users away from approvals and does not run queries', async () => {
@@ -75,15 +85,15 @@ describe('PendingApprovals', () => {
   it('selects only visible priceable rows and updates running totals', async () => {
     await renderPage()
 
+    expect(screen.getByText('2 entries · 12.0h · £850.00 est.')).toBeInTheDocument()
+
     const selectAll = screen.getByLabelText('Select all visible filtered priceable timesheets')
     await userEvent.click(selectAll)
 
-    expect(screen.getByText('2 selected')).toBeInTheDocument()
-    expect(screen.getByText('12h total')).toBeInTheDocument()
-    expect(screen.getByText('£850.00 est.')).toBeInTheDocument()
+    expect(screen.getByText('2 selected · 12.0h · £850.00 est.')).toBeInTheDocument()
 
     const orphanRowCheckbox = screen.getByLabelText(
-      'Select timesheet for Unknown freelancer on 2026-05-03'
+      'Select entry for Unknown freelancer on 2026-05-03'
     )
     expect(orphanRowCheckbox).toBeDisabled()
     expect(orphanRowCheckbox).not.toBeChecked()
@@ -97,12 +107,9 @@ describe('PendingApprovals', () => {
 
     const contractSelect = screen.getByLabelText('Contract')
     const contractOptions = within(contractSelect).getAllByRole('option').map((option) => option.textContent)
-    expect(contractOptions).toEqual(['All contracts', 'Alex Rivera @ NorthStar Consulting'])
+    expect(contractOptions).toEqual(['All contracts', 'Contract #1 · Alex Rivera'])
 
-    const summaryRow = screen.getByText('1 selected').closest('tr')
-    expect(summaryRow).not.toBeNull()
-    expect(within(summaryRow as HTMLElement).getByText('8h total')).toBeInTheDocument()
-    expect(within(summaryRow as HTMLElement).getByText('£600.00 est.')).toBeInTheDocument()
+    expect(screen.getByText('1 selected · 8.0h · £600.00 est.')).toBeInTheDocument()
     expect(screen.queryByRole('cell', { name: 'Sam Chen' })).not.toBeInTheDocument()
   })
 
@@ -119,6 +126,37 @@ describe('PendingApprovals', () => {
     expect(freelancerOptions).toEqual(['All freelancers', 'Sam Chen'])
   })
 
+  it('shows and cancels inline approve confirmation before submitting', async () => {
+    await renderPage()
+
+    const table = screen.getByRole('table')
+    await userEvent.click(
+      within(table).getByRole('button', {
+        name: 'Approve entry for Alex Rivera on 2026-05-01',
+      })
+    )
+    expect(screen.getByText('Approve this pending timesheet entry?')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel approval' }))
+    expect(screen.queryByText('Approve this pending timesheet entry?')).not.toBeInTheDocument()
+    expect(patchTimesheetEntryMock).not.toHaveBeenCalled()
+  })
+
+  it('submits approve only after confirmation', async () => {
+    await renderPage()
+
+    const table = screen.getByRole('table')
+    await userEvent.click(
+      within(table).getByRole('button', {
+        name: 'Approve entry for Alex Rivera on 2026-05-01',
+      })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm approve' }))
+
+    expect(patchTimesheetEntryMock).toHaveBeenCalledWith(101, { status: 'approved' })
+    expect(await screen.findByText('Timesheet approved.')).toBeInTheDocument()
+  })
+
   it('shows date validation and disables selection when range is invalid', async () => {
     await renderPage()
 
@@ -127,6 +165,6 @@ describe('PendingApprovals', () => {
 
     expect(screen.getByText('From date must be on or before to date.')).toBeInTheDocument()
     expect(screen.getByLabelText('Select all visible filtered priceable timesheets')).toBeDisabled()
-    expect(screen.getByLabelText('Select timesheet for Alex Rivera on 2026-05-01')).toBeDisabled()
+    expect(screen.getByLabelText('Select entry for Alex Rivera on 2026-05-01')).toBeDisabled()
   })
 })

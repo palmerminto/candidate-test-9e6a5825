@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchContracts } from '../api/contracts'
-import { fetchTimesheets } from '../api/timesheets'
-import { StatusBadge } from '../components/StatusBadge'
+import {
+  fetchTimesheets,
+  patchTimesheetEntry,
+  TimesheetDecisionPayload,
+} from '../api/timesheets'
 import { useAuth } from '../hooks/useAuth'
-import { formatEstimatedCost } from '../utils/cost'
 import { ApprovalFilters } from './pendingApprovals/types'
 import {
+  calculatePriceableSummary,
   calculateSelectionSummary,
+  formatContractFilterLabel,
+  formatContractFilterTitle,
+  formatSummaryBarText,
   getAllContractOptions,
   getAllFreelancerOptions,
   getContractOptions,
@@ -20,14 +26,33 @@ import {
   toPriceableRows,
   toggleVisiblePriceableSelection,
 } from './pendingApprovals/helpers'
+import { ApprovalsTable } from './pendingApprovals/ApprovalsTable'
+
+const tabularNums = { fontVariantNumeric: 'tabular-nums' as const }
+
+type DecisionVariables = {
+  entryId: number
+  payload: TimesheetDecisionPayload
+}
 
 export default function PendingApprovals() {
   const { isAdmin } = useAuth()
+  const queryClient = useQueryClient()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const [contractFilter, setContractFilter] = useState('')
   const [freelancerFilter, setFreelancerFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [approvingEntryId, setApprovingEntryId] = useState<number | null>(null)
+  const [rejectingEntryId, setRejectingEntryId] = useState<number | null>(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [rejectionReasonError, setRejectionReasonError] = useState<string | null>(null)
+  const [optimisticallyHiddenIds, setOptimisticallyHiddenIds] = useState<Set<number>>(
+    () => new Set()
+  )
+  const [pendingEntryId, setPendingEntryId] = useState<number | null>(null)
 
   const timesheetsQuery = useQuery({
     queryKey: ['timesheets', { status: 'submitted' }],
@@ -102,7 +127,15 @@ export default function PendingApprovals() {
     () => getVisibleRows(rows, filters, applyDateFilter),
     [rows, filters, applyDateFilter]
   )
+  const displayedRows = useMemo(
+    () => visibleRows.filter(({ entry }) => !optimisticallyHiddenIds.has(entry.id)),
+    [visibleRows, optimisticallyHiddenIds]
+  )
   const visiblePriceableRows = useMemo(() => toPriceableRows(visibleRows), [visibleRows])
+  const displayedPriceableRows = useMemo(
+    () => visiblePriceableRows.filter(({ entry }) => !optimisticallyHiddenIds.has(entry.id)),
+    [visiblePriceableRows, optimisticallyHiddenIds]
+  )
   const visiblePriceableIds = useMemo(
     () => getVisiblePriceableIds(rows, filters),
     [rows, filters]
@@ -126,8 +159,65 @@ export default function PendingApprovals() {
     selectedCost,
     allVisiblePriceableSelected,
     isSelectAllIndeterminate,
-  } = useMemo(() => calculateSelectionSummary(visiblePriceableRows, selectedIds), [visiblePriceableRows, selectedIds])
+  } = useMemo(
+    () => calculateSelectionSummary(displayedPriceableRows, selectedIds),
+    [displayedPriceableRows, selectedIds]
+  )
+  const visibleSummary = useMemo(
+    () => calculatePriceableSummary(displayedPriceableRows),
+    [displayedPriceableRows]
+  )
+  const summaryText = formatSummaryBarText(
+    selectedRows.length,
+    selectedHours,
+    selectedCost,
+    visibleSummary.entryCount,
+    visibleSummary.totalHours,
+    visibleSummary.totalCost
+  )
+  const hasSelection = selectedRows.length > 0
+  const bulkActionTitle = hasSelection
+    ? 'Bulk actions will be added next'
+    : 'Select at least one entry'
   const filtersBlockSelection = isDateRangeInvalid
+
+  const decisionMutation = useMutation({
+    mutationFn: ({ entryId, payload }: DecisionVariables) =>
+      patchTimesheetEntry(entryId, payload),
+    onSuccess: (_, { entryId, payload }) => {
+      queryClient.invalidateQueries({ queryKey: ['timesheets', { status: 'submitted' }] })
+      setSelectedIds((current) => {
+        const next = new Set(current)
+        next.delete(entryId)
+        return next
+      })
+      setOptimisticallyHiddenIds((current) => {
+        const next = new Set(current)
+        next.delete(entryId)
+        return next
+      })
+      setApprovingEntryId(null)
+      setRejectingEntryId(null)
+      setRejectionReason('')
+      setRejectionReasonError(null)
+      setPendingEntryId(null)
+      setActionError(null)
+      setActionSuccess(
+        payload.status === 'approved' ? 'Timesheet approved.' : 'Timesheet rejected.'
+      )
+    },
+    onError: (_, { entryId }) => {
+      setOptimisticallyHiddenIds((current) => {
+        const next = new Set(current)
+        next.delete(entryId)
+        return next
+      })
+      setApprovingEntryId(null)
+      setPendingEntryId(null)
+      setActionError('Failed to update this timesheet. Please try again.')
+      setActionSuccess(null)
+    },
+  })
 
   const selectedContract = contractFilter
     ? contractOptions.find((contract) => String(contract.id) === contractFilter)
@@ -149,8 +239,81 @@ export default function PendingApprovals() {
   function toggleAllVisiblePriceable() {
     if (filtersBlockSelection) return
 
-    setSelectedIds((current) => toggleVisiblePriceableSelection(current, visiblePriceableRows))
+    setSelectedIds((current) => toggleVisiblePriceableSelection(current, displayedPriceableRows))
   }
+
+  function hideEntryOptimistically(entryId: number) {
+    setOptimisticallyHiddenIds((current) => new Set(current).add(entryId))
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      next.delete(entryId)
+      return next
+    })
+  }
+
+  function resetActionUi() {
+    setActionError(null)
+    setActionSuccess(null)
+    setApprovingEntryId(null)
+    setRejectingEntryId(null)
+    setRejectionReason('')
+    setRejectionReasonError(null)
+  }
+
+  function openApprove(entryId: number) {
+    resetActionUi()
+    setApprovingEntryId(entryId)
+  }
+
+  function cancelApprove() {
+    setApprovingEntryId(null)
+  }
+
+  function handleApprove(entryId: number) {
+    resetActionUi()
+    setPendingEntryId(entryId)
+    hideEntryOptimistically(entryId)
+    decisionMutation.mutate({ entryId, payload: { status: 'approved' } })
+  }
+
+  function openReject(entryId: number) {
+    resetActionUi()
+    setRejectingEntryId(entryId)
+  }
+
+  function cancelReject() {
+    setRejectingEntryId(null)
+    setRejectionReason('')
+    setRejectionReasonError(null)
+  }
+
+  function handleRejectionReasonChange(value: string) {
+    setRejectionReason(value)
+    if (rejectionReasonError) {
+      setRejectionReasonError(null)
+    }
+  }
+
+  function handleReject(entryId: number) {
+    const reason = rejectionReason.trim()
+    if (!reason) {
+      setRejectionReasonError('Add a reason to reject')
+      return
+    }
+
+    setRejectionReasonError(null)
+    setActionError(null)
+    setActionSuccess(null)
+    setPendingEntryId(entryId)
+    hideEntryOptimistically(entryId)
+    decisionMutation.mutate({
+      entryId,
+      payload: { status: 'rejected', rejection_reason: reason },
+    })
+  }
+
+  const trimmedRejectionReason = rejectionReason.trim()
+  const isDecisionPending = decisionMutation.isPending
 
   if (!isAdmin) {
     return <Navigate to="/contracts" replace />
@@ -177,6 +340,17 @@ export default function PendingApprovals() {
         </div>
       ) : (
         <div className="space-y-4">
+          {actionError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded px-3 py-2">
+              {actionError}
+            </div>
+          )}
+          {actionSuccess && (
+            <div className="bg-green-50 border border-green-200 text-green-800 text-sm rounded px-3 py-2">
+              {actionSuccess}
+            </div>
+          )}
+
           <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
             <div className="flex flex-wrap gap-4">
               <div className="min-w-0 flex-1 basis-[12rem]">
@@ -188,16 +362,16 @@ export default function PendingApprovals() {
                   value={contractFilter}
                   onChange={(e) => setContractFilter(e.target.value)}
                   className="w-full border border-slate-300 rounded px-3 py-2 pr-8 text-sm bg-white truncate focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  title={
-                    selectedContract
-                      ? `${selectedContract.freelancer.name} @ ${selectedContract.company.name}`
-                      : undefined
-                  }
+                  title={selectedContract ? formatContractFilterTitle(selectedContract) : undefined}
                 >
                   <option value="">All contracts</option>
                   {contractOptions.map((contract) => (
-                    <option key={contract.id} value={contract.id}>
-                      {contract.freelancer.name} @ {contract.company.name}
+                    <option
+                      key={contract.id}
+                      value={contract.id}
+                      title={formatContractFilterTitle(contract)}
+                    >
+                      {formatContractFilterLabel(contract)}
                     </option>
                   ))}
                 </select>
@@ -254,100 +428,56 @@ export default function PendingApprovals() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all visible filtered priceable timesheets"
-                    aria-checked={isSelectAllIndeterminate ? 'mixed' : allVisiblePriceableSelected}
-                    checked={allVisiblePriceableSelected}
-                    disabled={filtersBlockSelection || visiblePriceableRows.length === 0}
-                    ref={(input) => {
-                      if (input) {
-                        input.indeterminate = isSelectAllIndeterminate
-                      }
-                    }}
-                    onChange={toggleAllVisiblePriceable}
-                  />
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Freelancer</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Company</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600" style={{ minWidth: '7.5rem' }}>
-                  Hours
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600" style={{ minWidth: '10rem' }}>
-                  Estimated cost
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {visibleRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-6 text-slate-500 text-sm">
-                    No timesheet entries match the current filters.
-                  </td>
-                </tr>
-              ) : (
-              visibleRows.map(({ entry, contract }) => {
-                const freelancerName = contract?.freelancer.name ?? 'Unknown freelancer'
-                const companyName = contract?.company.name ?? 'Unknown company'
-                const estimatedCostText = contract
-                  ? formatEstimatedCost(entry.hours, contract.daily_rate)
-                  : 'Not priceable'
-                const notesText = contract ? (entry.rejection_reason ?? '—') : 'Missing contract details'
-                const isPriceable = Boolean(contract)
-
-                return (
-                  <tr key={entry.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 text-slate-700">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select timesheet for ${freelancerName} on ${entry.date}`}
-                        checked={isPriceable && selectedIds.has(entry.id)}
-                        disabled={!isPriceable || filtersBlockSelection}
-                        onChange={() => toggleRow(entry.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{entry.date}</td>
-                    <td className="px-4 py-3 text-slate-700">{freelancerName}</td>
-                    <td className="px-4 py-3 text-slate-700">{companyName}</td>
-                    <td className="px-4 py-3 text-slate-700" style={{ minWidth: '7.5rem' }}>
-                      {entry.hours}h
-                    </td>
-                    <td className="px-4 py-3 text-slate-700" style={{ minWidth: '10rem' }}>
-                      {estimatedCostText}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={entry.status} />
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs italic">{notesText}</td>
-                  </tr>
-                )
-              })
-              )}
-            </tbody>
-            <tfoot className="bg-slate-50 border-t border-slate-200">
-              <tr>
-                <td colSpan={4} className="px-4 py-2 text-slate-500 text-xs">
-                  {selectedRows.length} selected
-                </td>
-                <td className="px-4 py-2 font-medium text-slate-700" style={{ minWidth: '7.5rem' }}>
-                  {selectedHours}h total
-                </td>
-                <td className="px-4 py-2 font-medium text-slate-700" style={{ minWidth: '10rem' }}>
-                  £{selectedCost.toFixed(2)} est.
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
+          <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm font-medium text-slate-700" style={tabularNums}>
+              {summaryText}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled
+                title={bulkActionTitle}
+                aria-label="Approve selected"
+                className="bg-indigo-600 text-white text-sm px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                disabled
+                title={bulkActionTitle}
+                aria-label="Reject selected"
+                className="text-slate-600 text-sm px-4 py-2 rounded hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Reject
+              </button>
+            </div>
           </div>
+
+          <ApprovalsTable
+            displayedRows={displayedRows}
+            displayedPriceableRows={displayedPriceableRows}
+            selectedIds={selectedIds}
+            filtersBlockSelection={filtersBlockSelection}
+            allVisiblePriceableSelected={allVisiblePriceableSelected}
+            isSelectAllIndeterminate={isSelectAllIndeterminate}
+            approvingEntryId={approvingEntryId}
+            rejectingEntryId={rejectingEntryId}
+            pendingEntryId={pendingEntryId}
+            isDecisionPending={isDecisionPending}
+            rejectionReason={rejectionReason}
+            rejectionReasonError={rejectionReasonError}
+            trimmedRejectionReason={trimmedRejectionReason}
+            onToggleAllVisiblePriceable={toggleAllVisiblePriceable}
+            onToggleRow={toggleRow}
+            onOpenApprove={openApprove}
+            onCancelApprove={cancelApprove}
+            onHandleApprove={handleApprove}
+            onOpenReject={openReject}
+            onCancelReject={cancelReject}
+            onHandleReject={handleReject}
+            onRejectionReasonChange={handleRejectionReasonChange}
+          />
         </div>
       )}
     </div>

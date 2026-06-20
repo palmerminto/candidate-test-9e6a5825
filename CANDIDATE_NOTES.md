@@ -48,3 +48,17 @@ I added contract, freelancer, and date-range filters on top of the existing subm
 **Contract label ambiguity:** In this domain, a *contract* is the freelancer engagement (person + rate + period), not the company alone. The filter label matches the README and the rest of the app, but the option text (`Alex Rivera @ NorthStar Consulting`) can read like “person at company”, especially because company admins only ever see their own company in the table. I kept the existing label and option format rather than renaming to “Company” (wrong object) or dropping the company from the label (would diverge from contract list wording). The table still exposes Freelancer and Company as separate columns for clarity.
 
 **Narrowed filter options:** Contract and freelancer dropdowns now narrow each other — selecting a freelancer limits the contract list to that person’s contracts, and selecting a contract limits the freelancer list to that engagement’s freelancer. This avoids impossible combinations (e.g. freelancer A + contract for freelancer B) without hiding options based on pending entry counts. Stale selections clear automatically when a parent filter changes.
+
+### Single-row approve and reject (step 7)
+
+I wired per-row approve and reject on top of the existing filters and selection model. Both decisions go through one React Query `useMutation` calling `patchTimesheetEntry`, with query invalidation on success and a shared success/error banner at page level.
+
+**Inline flows, no modals:** Approve opens an inline confirmation tray in the table (“Approve this pending timesheet entry?” with Confirm approve / Cancel approval). Reject opens an inline reason form in the same row; the confirm button stays disabled until a trimmed reason is present, and validation errors render under the input rather than in the page banner. Opening one flow clears the other.
+
+**Optimistic hide:** On submit, the row is removed from the visible set immediately via `optimisticallyHiddenIds`, and selection is reconciled. If the PATCH fails, the row reappears and a retry message is shown.
+
+**UX alignment:** I removed the status column and table footer totals (every row is submitted) and added a persistent summary/action bar above the table. It shows visible entry count, hours, and estimated cost when nothing is selected, and switches to selected subtotals when rows are checked. Bulk Approve/Reject controls are present but disabled until Step 8; they use `aria-label="Approve selected"` / `"Reject selected"` so they do not clash with per-row actions. Row action buttons stay as quiet ghost controls; primary emphasis sits on the summary bar and inline confirm buttons.
+
+**Table extraction:** `ApprovalsTable.tsx` now owns the table markup, row actions, and inline trays. `PendingApprovals.tsx` keeps data fetching, filters, mutation handlers, and the summary bar.
+
+**Shared formatting:** Contract labels are aligned between filter and table (`Contract #1 · Alex Rivera`, with date range in the table cell and full title on the filter option). Estimated cost in cells uses plain currency; the summary bar keeps the `est.` suffix via shared helpers in `frontend/src/utils/cost.ts` (`formatCurrency`, `formatEstimatedCostValue`).

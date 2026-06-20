@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { calculateEstimatedCost, formatEstimatedCost } from './cost'
+import {
+  calculateEstimatedCost,
+  formatCurrency,
+  formatEstimatedCost,
+  formatEstimatedCostValue,
+} from './cost'
 
 describe('calculateEstimatedCost', () => {
   it('calculates cost from numeric hours and daily rate', () => {
@@ -24,5 +29,15 @@ describe('formatEstimatedCost', () => {
 
   it('formats string inputs the same way as numbers', () => {
     expect(formatEstimatedCost('6', '320')).toBe('£240.00 est.')
+  })
+})
+
+describe('shared currency formatters', () => {
+  it('formats plain currency values', () => {
+    expect(formatCurrency(123.4)).toBe('£123.40')
+  })
+
+  it('formats numeric estimated cost values', () => {
+    expect(formatEstimatedCostValue(850)).toBe('£850.00 est.')
   })
 })

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   calculateSelectionSummary,
+  formatContractFilterLabel,
+  formatContractFilterTitle,
+  formatContractHeading,
   getAllContractOptions,
   getAllFreelancerOptions,
   getContractOptions,
@@ -36,6 +39,16 @@ describe('pendingApprovals helpers', () => {
 
     expect(allContractOptions.map((contract) => contract.id)).toEqual([1, 2])
     expect(allFreelancerOptions.map((freelancer) => freelancer.id)).toEqual([11, 22])
+  })
+
+  it('formats contract labels consistently for filters and table rows', () => {
+    const contract = contractsFixture[0]
+
+    expect(formatContractHeading(contract)).toBe('Contract #1')
+    expect(formatContractFilterLabel(contract)).toBe('Contract #1 · Alex Rivera')
+    expect(formatContractFilterTitle(contract)).toBe(
+      'Contract #1 · Alex Rivera · 2026-01-01 – 2026-06-30'
+    )
   })
 
   it('narrows contract and freelancer options based on active filters', () => {
